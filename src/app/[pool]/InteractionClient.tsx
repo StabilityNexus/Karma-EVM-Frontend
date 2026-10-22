@@ -350,9 +350,35 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
   baseSymbol: string;
 }) {
   const { address } = useAccount();
-  const { writeContractAsync, data: hash, isPending: isTransactionPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess: isConfirmed, isError: isReceiptError, error: receiptError } = useWaitForTransactionReceipt({ hash });
-  const isTransacting = isTransactionPending || isConfirming;
+  // Dedicated write & receipt hooks for ERC-20 approve flow
+  const {
+    writeContractAsync: writeApproveAsync,
+    data: approveHash,
+    isPending: isApprovePending,
+    reset: resetApproveWrite,
+  } = useWriteContract();
+  const {
+    isLoading: isApproveConfirming,
+    isSuccess: isApproveConfirmed,
+    isError: isApproveReceiptError,
+    error: approveReceiptError,
+  } = useWaitForTransactionReceipt({ hash: approveHash });
+
+  // Dedicated write & receipt hooks for trade (buy/sell) flow
+  const {
+    writeContractAsync: writeTradeAsync,
+    data: tradeHash,
+    isPending: isTradePending,
+    reset: resetTradeWrite,
+  } = useWriteContract();
+  const {
+    isLoading: isTradeConfirming,
+    isSuccess: isTradeConfirmed,
+    isError: isTradeReceiptError,
+    error: tradeReceiptError,
+  } = useWaitForTransactionReceipt({ hash: tradeHash });
+
+  const isTransacting = isApprovePending || isApproveConfirming || isTradePending || isTradeConfirming;
 
   const [buyAmount, setBuyAmount] = useState('');
   const [sellAmount, setSellAmount] = useState('');
@@ -521,7 +547,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
       const walletToastId = toast.loading('Confirm transaction in your wallet...');
       pendingTransactionToastIdRef.current = walletToastId;
 
-      await writeContractAsync({
+      await writeTradeAsync({
         address: tokenAddress! as `0x${string}`,
         abi: CoinABI,
         functionName: 'buy',
@@ -540,6 +566,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
       }, TX_TIMEOUT_MS);
     } catch (err: unknown) {
       setPendingTransactionType(null);
+      resetTradeWrite();
       if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
       logger.error("Buy transaction error:", err instanceof Error ? err : undefined);
       const currentToastId = pendingTransactionToastIdRef.current;
@@ -558,7 +585,63 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
       }
       pendingTransactionToastIdRef.current = null;
     }
-  }, [tokenAddress, address, writeContractAsync, baseDecimals]);
+  }, [tokenAddress, address, writeTradeAsync, baseDecimals, resetTradeWrite]);
+
+  const handleSellTransaction = useCallback(async (amount: string) => {
+    try {
+      const amountWei = parseUnits(amount, 18);
+
+      // Check user's token balance
+      if (userTokens < amountWei) {
+        toast.error(`Insufficient ${symbol} balance. You have ${formatUnits(userTokens, 18)} ${symbol} available.`);
+        return;
+      }
+
+      setPendingTransactionType('sell');
+
+      // Show pre-wallet toast so the user gets immediate feedback
+      const walletToastId = toast.loading('Confirm transaction in your wallet...');
+      pendingTransactionToastIdRef.current = walletToastId;
+
+      await writeTradeAsync({
+        address: tokenAddress as `0x${string}`,
+        abi: CoinABI,
+        functionName: 'sell',
+        args: [amountWei],
+      });
+
+      // Tx submitted — update the same toast to show on-chain wait
+      toast.loading('Waiting for on-chain confirmation...', { id: walletToastId });
+
+      // Start timeout for stuck transactions
+      if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
+      txTimeoutRef.current = setTimeout(() => {
+        if (pendingTransactionToastIdRef.current === walletToastId) {
+          toast.warning('Transaction is taking longer than expected. It may still complete.', { id: walletToastId });
+        }
+      }, TX_TIMEOUT_MS);
+    } catch (err: unknown) {
+      setPendingTransactionType(null);
+      resetTradeWrite();
+      if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
+      logger.error('Sell error:', err instanceof Error ? err : undefined);
+      const currentToastId = pendingTransactionToastIdRef.current;
+      if (isUserRejectedError(err)) {
+        if (currentToastId !== null) {
+          toast.info('Transaction cancelled in wallet.', { id: currentToastId });
+        } else {
+          toast.info('Transaction cancelled in wallet.');
+        }
+      } else {
+        if (currentToastId !== null) {
+          toast.error((err as Error).message || 'Failed to sell tokens', { id: currentToastId });
+        } else {
+          toast.error((err as Error).message || 'Failed to sell tokens');
+        }
+      }
+      pendingTransactionToastIdRef.current = null;
+    }
+  }, [tokenAddress, writeTradeAsync, userTokens, symbol, resetTradeWrite]);
 
   const handleBuy = withErrorHandling(async () => {
     if (!address || !connected) {
@@ -605,7 +688,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
       pendingTransactionToastIdRef.current = approvalToast;
       setPendingApproval({ amount: buyAmount, type: 'buy' });
       try {
-        await writeContractAsync({
+        await writeApproveAsync({
           address: poolData.asset_address as `0x${string}`,
           abi: ERC20ABI,
           functionName: 'approve',
@@ -613,6 +696,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
         });
       } catch (err: unknown) {
         setPendingApproval(null);
+        resetApproveWrite();
         if (isUserRejectedError(err)) {
           toast.info('Approval cancelled in wallet.', { id: approvalToast });
         } else {
@@ -623,6 +707,12 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
       }
       // Approval submitted — keep toast alive through mining
       toast.loading('Waiting for approval confirmation...', { id: approvalToast });
+      if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
+      txTimeoutRef.current = setTimeout(() => {
+        if (pendingTransactionToastIdRef.current === approvalToast) {
+          toast.warning('Transaction is taking longer than expected. It may still complete.', { id: approvalToast });
+        }
+      }, TX_TIMEOUT_MS);
       return;
     }
 
@@ -645,132 +735,106 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
       return;
     }
 
-    try {
-      const amountWei = parseUnits(sellAmount, 18);
-
-      // Check user's token balance
-      if (userTokens < amountWei) {
-        toast.error(`Insufficient ${symbol} balance. You have ${formatUnits(userTokens, 18)} ${symbol} available.`);
-        return;
-      }
-
-      setPendingTransactionType('sell');
-
-      // Show pre-wallet toast so the user gets immediate feedback
-      const walletToastId = toast.loading('Confirm transaction in your wallet...');
-      pendingTransactionToastIdRef.current = walletToastId;
-
-      await writeContractAsync({
-        address: tokenAddress as `0x${string}`,
-        abi: CoinABI,
-        functionName: 'sell',
-        args: [amountWei],
-      });
-
-      // Tx submitted — update the same toast to show on-chain wait
-      toast.loading('Waiting for on-chain confirmation...', { id: walletToastId });
-
-      // Start timeout for stuck transactions
-      if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
-      txTimeoutRef.current = setTimeout(() => {
-        if (pendingTransactionToastIdRef.current === walletToastId) {
-          toast.warning('Transaction is taking longer than expected. It may still complete.', { id: walletToastId });
-        }
-      }, TX_TIMEOUT_MS);
-    } catch (err: unknown) {
-      setPendingTransactionType(null);
-      if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
-      logger.error('Sell error:', err instanceof Error ? err : undefined);
-      const currentToastId = pendingTransactionToastIdRef.current;
-      if (isUserRejectedError(err)) {
-        if (currentToastId !== null) {
-          toast.info('Transaction cancelled in wallet.', { id: currentToastId });
-        } else {
-          toast.info('Transaction cancelled in wallet.');
-        }
-      } else {
-        if (currentToastId !== null) {
-          toast.error((err as Error).message || 'Failed to sell tokens', { id: currentToastId });
-        } else {
-          toast.error((err as Error).message || 'Failed to sell tokens');
-        }
-      }
-      pendingTransactionToastIdRef.current = null;
-    }
+    await handleSellTransaction(sellAmount);
   };
 
-  // Handle successful transaction confirmation
+  // Explicitly watch the approval receipt to trigger handleBuyTransaction / handleSellTransaction
   useEffect(() => {
-    if (isConfirmed && !isTransactionPending) {
-      // Clear stuck-transaction timeout on any confirmation
+    if (isApproveConfirmed && pendingApproval) {
       if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
 
-      if (pendingApproval && pendingApproval.type === 'buy') {
-        const approvalToastId = pendingTransactionToastIdRef.current;
-        setPendingApproval(null);
-        pendingTransactionToastIdRef.current = null;
+      const approvalToastId = pendingTransactionToastIdRef.current;
+      const approvalData = pendingApproval;
+      setPendingApproval(null);
+      pendingTransactionToastIdRef.current = null;
+      resetApproveWrite();
+
+      if (approvalData.type === 'buy') {
         if (approvalToastId !== null) {
           toast.success('Approval confirmed. Submitting buy transaction...', { id: approvalToastId });
         } else {
           toast.success('Approval confirmed. Submitting buy transaction...');
         }
-        handleBuyTransaction(pendingApproval.amount);
-      } else {
-        const currentToastId = pendingTransactionToastIdRef.current;
-        if (pendingTransactionType === 'buy') {
-          if (currentToastId !== null) {
-            toast.success(`${symbol} buy confirmed on-chain.`, { id: currentToastId });
-          } else {
-            toast.success(`${symbol} buy confirmed on-chain.`);
-          }
+        handleBuyTransaction(approvalData.amount);
+      } else if (approvalData.type === 'sell') {
+        if (approvalToastId !== null) {
+          toast.success('Approval confirmed. Submitting sell transaction...', { id: approvalToastId });
+        } else {
+          toast.success('Approval confirmed. Submitting sell transaction...');
         }
-        if (pendingTransactionType === 'sell') {
-          if (currentToastId !== null) {
-            toast.success(`${symbol} sell confirmed on-chain.`, { id: currentToastId });
-          } else {
-            toast.success(`${symbol} sell confirmed on-chain.`);
-          }
-        }
-        setPendingTransactionType(null);
-        pendingTransactionToastIdRef.current = null;
-        // Clear input fields on confirmed success
-        setBuyAmount('');
-        setSellAmount('');
-        handlePoll();
+        handleSellTransaction(approvalData.amount);
       }
     }
-  }, [isConfirmed, isTransactionPending, pendingApproval, pendingTransactionType, handlePoll, handleBuyTransaction, poolData.id.id, symbol]);
+  }, [isApproveConfirmed, pendingApproval, handleBuyTransaction, handleSellTransaction, resetApproveWrite]);
 
-  // Handle on-chain transaction failure (reverted tx)
+  // Explicitly watch the trade receipt to trigger the success toast and clear the UI state
   useEffect(() => {
-    if (isReceiptError) {
+    if (isTradeConfirmed && pendingTransactionType) {
+      // Clear stuck-transaction timeout on confirmation
       if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
 
       const currentToastId = pendingTransactionToastIdRef.current;
-
-      if (pendingApproval) {
-        // Approval reverted on-chain
-        const errorMsg = receiptError?.message || 'Token approval failed on-chain.';
+      if (pendingTransactionType === 'buy') {
         if (currentToastId !== null) {
-          toast.error(errorMsg, { id: currentToastId });
+          toast.success(`${symbol} buy confirmed on-chain.`, { id: currentToastId });
         } else {
-          toast.error(errorMsg);
+          toast.success(`${symbol} buy confirmed on-chain.`);
         }
-        setPendingApproval(null);
-      } else if (pendingTransactionType) {
-        // Buy/sell reverted on-chain
-        const errorMsg = receiptError?.message || 'Transaction failed on-chain.';
+      } else if (pendingTransactionType === 'sell') {
         if (currentToastId !== null) {
-          toast.error(errorMsg, { id: currentToastId });
+          toast.success(`${symbol} sell confirmed on-chain.`, { id: currentToastId });
         } else {
-          toast.error(errorMsg);
+          toast.success(`${symbol} sell confirmed on-chain.`);
         }
-        setPendingTransactionType(null);
       }
 
+      setPendingTransactionType(null);
       pendingTransactionToastIdRef.current = null;
+      resetTradeWrite();
+
+      // Clear input fields on confirmed success
+      setBuyAmount('');
+      setSellAmount('');
+      handlePoll();
     }
-  }, [isReceiptError, receiptError, pendingTransactionType, pendingApproval]);
+  }, [isTradeConfirmed, pendingTransactionType, handlePoll, symbol, resetTradeWrite]);
+
+  // Handle on-chain approval failure (reverted tx)
+  useEffect(() => {
+    if (isApproveReceiptError && pendingApproval) {
+      if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
+
+      const currentToastId = pendingTransactionToastIdRef.current;
+      const errorMsg = approveReceiptError?.message || 'Token approval failed on-chain.';
+      if (currentToastId !== null) {
+        toast.error(errorMsg, { id: currentToastId });
+      } else {
+        toast.error(errorMsg);
+      }
+      setPendingApproval(null);
+      pendingTransactionToastIdRef.current = null;
+      resetApproveWrite();
+    }
+  }, [isApproveReceiptError, approveReceiptError, pendingApproval, resetApproveWrite]);
+
+  // Handle on-chain trade failure (reverted tx)
+  useEffect(() => {
+    if (isTradeReceiptError && pendingTransactionType) {
+      if (txTimeoutRef.current) clearTimeout(txTimeoutRef.current);
+
+      const currentToastId = pendingTransactionToastIdRef.current;
+      const errorMsg = tradeReceiptError?.message || 'Transaction failed on-chain.';
+      if (currentToastId !== null) {
+        toast.error(errorMsg, { id: currentToastId });
+      } else {
+        toast.error(errorMsg);
+      }
+      setPendingTransactionType(null);
+      pendingTransactionToastIdRef.current = null;
+      resetTradeWrite();
+    }
+  }, [isTradeReceiptError, tradeReceiptError, pendingTransactionType, resetTradeWrite]);
+
 
   const vaultTitle = isBull ? 'Bull Vault' : 'Bear Vault';
   const vaultIcon = isBull ? (
