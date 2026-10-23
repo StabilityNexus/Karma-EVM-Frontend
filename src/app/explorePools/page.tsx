@@ -693,6 +693,12 @@ function ExploreKarmaPoolsClient() {
     setSearchQuery("");
   }, []);
 
+  const clearPoolFilters = useCallback((): void => {
+    setSearchQuery("");
+    setBaseTokenFilter('all');
+    setPriceFeedFilter('all');
+  }, []);
+
   // Clicking a column header re-sorts by that field; clicking the active field flips order.
   const handleSort = useCallback((field: PoolSortField): void => {
     setSortState(prev =>
@@ -835,9 +841,9 @@ function ExploreKarmaPoolsClient() {
           filteredPools={filteredPools}
           groupedPools={groupedPools}
           sortedChainIds={sortedChainIds}
-          searchQuery={debouncedSearchQuery}
+          hasActiveCriteria={Boolean(searchQuery.trim()) || baseTokenFilter !== 'all' || priceFeedFilter !== 'all'}
           onUsePool={handleUsePool}
-          onClearSearch={clearSearch}
+          onClearFilters={clearPoolFilters}
           currentChainId={currentChainId}
           isConnected={isConnected}
           isConnectedChainSupported={isConnectedChainSupported}
