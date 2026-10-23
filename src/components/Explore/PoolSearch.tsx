@@ -104,6 +104,7 @@ const PoolSearch: React.FC<PoolSearchProps> = ({
         </div>
         <input
           type="text"
+          aria-label="Search pools"
           placeholder="Search pools by name, token symbol, price feed, or chain..."
           value={searchQuery}
           onChange={onSearchChange}
@@ -112,6 +113,7 @@ const PoolSearch: React.FC<PoolSearchProps> = ({
         {searchQuery && (
           <button
             onClick={onClearSearch}
+            aria-label="Clear pool search"
             className="absolute inset-y-0 right-0 pr-3 flex items-center"
             type="button"
           >
