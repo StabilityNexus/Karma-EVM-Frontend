@@ -18,11 +18,9 @@ import {
   X,
   CheckCircle2
 } from "lucide-react";
-import { Loading } from "@/components/ui/loading";
 
 export default function Hero() {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [oracleAddress, setOracleAddress] = useState("");
 
@@ -30,10 +28,6 @@ export default function Hero() {
   const [balanceRatio, setBalanceRatio] = useState(50); // 0 = 100% Bull, 100 = 100% Bear, 50 = 50/50
 
   const isOracleAddressValid = isAddress(oracleAddress.trim());
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -51,14 +45,6 @@ export default function Hero() {
   const bullHoldings = 100 - balanceRatio;
   const bearHoldings = balanceRatio;
   const simulatedWeight = Math.min(bullHoldings, bearHoldings) * 2; // scale 0-100%
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center min-h-[90vh] bg-transparent">
-        <Loading size="xl" />
-      </div>
-    );
-  }
 
   return (
     <div className="relative w-full min-h-[92vh] flex flex-col items-center justify-center pt-24 pb-16 px-4 sm:px-6 lg:px-8 overflow-hidden">

@@ -28,16 +28,9 @@ const Navbar: React.FC<NavbarProps> = ({ className = "" }) => {
   
   const pathname = usePathname();
   const router = useRouter();
-  const [isThemeReady, setIsThemeReady] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isOracleModalOpen, setIsOracleModalOpen] = useState(false);
   const [oracleAddress, setOracleAddress] = useState("");
-
-  useEffect(() => {
-    if (resolvedTheme) {
-      setIsThemeReady(true);
-    }
-  }, [resolvedTheme]);
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
@@ -72,8 +65,6 @@ const Navbar: React.FC<NavbarProps> = ({ className = "" }) => {
     setOracleAddress("");
     router.push(`/submitPrice?id=${encodeURIComponent(address)}`);
   };
-
-  if (!isThemeReady) return null;
 
   const navItems = [
     { name: "Explore", href: "/explorePools" },
