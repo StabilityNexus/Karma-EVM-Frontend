@@ -29,6 +29,7 @@ import StatusMessages from "@/components/Explore/StatusMessages";
 import PoolList from "@/components/Explore/PoolList";
 import { Loading } from "@/components/ui/loading";
 import { logger } from "@/lib/logger";
+import { getPoolPath } from "@/utils/routes";
 
 // Constants for configuration
 const DENOMINATOR = 100_000;
@@ -686,7 +687,7 @@ function ExploreKarmaPoolsClient() {
       toast.info("You are not connected. Connect your wallet to interact with this pool.");
     }
 
-    router.push(`/pool?id=${poolId}`);
+    router.push(getPoolPath(poolId));
   }, [isConnected, router]);
 
   const clearSearch = useCallback((): void => {
