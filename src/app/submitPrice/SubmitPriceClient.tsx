@@ -22,6 +22,7 @@ import { KarmaAdapterFactoryABI } from '@/utils/abi/KarmaAdapterFactory';
 import { PredictionPoolABI } from '@/utils/abi/PredictionPool';
 import { ERC20ABI } from '@/utils/abi/ERC20';
 import { KarmaAdapterFactories } from '@/utils/addresses';
+import { getPoolPath } from '@/utils/routes';
 import { toast } from 'sonner';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -738,7 +739,7 @@ export default function SubmitPriceClient() {
               {/* Linked Pool Button */}
               {poolAddr && (
                 <Link
-                  href={`/${poolAddr}`}
+                  href={getPoolPath(poolAddr)}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-xl text-xs font-semibold text-zinc-800 dark:text-zinc-200 transition-colors"
                 >
                   <Layers size={14} className="text-violet-500" />
@@ -951,7 +952,7 @@ export default function SubmitPriceClient() {
                     </div>
                     {poolAddr && (
                       <Link
-                        href={`/${poolAddr}`}
+                        href={getPoolPath(poolAddr)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold shrink-0"
                       >
                         Buy Tokens in Pool <ArrowUpRight size={12} />
@@ -970,7 +971,7 @@ export default function SubmitPriceClient() {
                     </div>
                     {poolAddr && (
                       <Link
-                        href={`/${poolAddr}`}
+                        href={getPoolPath(poolAddr)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-semibold shrink-0"
                       >
                         Rebalance in Pool <ArrowUpRight size={12} />
