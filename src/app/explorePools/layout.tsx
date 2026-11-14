@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "https://evm.karma.stability.nexus/og-image.png",
+        url: "https://karma.stability.nexus/og-image.png",
         width: 1200,
         height: 630,
         alt: "Karma Protocol - Decentralized Oracle & Prediction Markets",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     title: "Explore Pools",
     description:
       "Browse prediction pools across supported chains, compare bull and bear markets, and discover real-time opportunities with oracle pricing, liquidity, and performance insights.",
-    images: ["https://evm.karma.stability.nexus/og-image.png"],
+    images: ["https://karma.stability.nexus/og-image.png"],
   },
 };
 
