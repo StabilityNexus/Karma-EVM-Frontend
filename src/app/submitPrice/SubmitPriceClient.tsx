@@ -137,6 +137,8 @@ export default function SubmitPriceClient() {
       setOracleAddressInput(currentOracle);
       if (isAddress(currentOracle)) {
         setActiveKarmaAddress(currentOracle as Address);
+      } else {
+        setActiveKarmaAddress(undefined);
       }
     }
   }, [searchParams]);
@@ -263,7 +265,11 @@ export default function SubmitPriceClient() {
 
   // Auto-resolve oracle when entered via pool mode
   useEffect(() => {
-    if (lookupMode === 'pool' && poolQueryAddress) {
+    if (lookupMode === 'pool') {
+      if (!poolQueryAddress) {
+        setActiveKarmaAddress(undefined);
+        return;
+      }
       // 1. Check if the pool's own oracle is a valid Karma
       if (poolOracleAddress && poolOracleAddress !== '0x0000000000000000000000000000000000000000') {
         setActiveKarmaAddress(poolOracleAddress);
@@ -275,9 +281,14 @@ export default function SubmitPriceClient() {
         discoveredKarmaFromFactory !== '0x0000000000000000000000000000000000000000'
       ) {
         setActiveKarmaAddress(discoveredKarmaFromFactory);
+        return;
+      }
+      // 3. Clear previous oracle if pool lookup resolves none
+      if (!isPoolLoading) {
+        setActiveKarmaAddress(undefined);
       }
     }
-  }, [lookupMode, poolQueryAddress, poolOracleAddress, discoveredKarmaFromFactory]);
+  }, [lookupMode, poolQueryAddress, poolOracleAddress, discoveredKarmaFromFactory, isPoolLoading]);
 
   // ── On-chain Reads for User-Specific Data ─────────────────────────────────
   const { data: userData, refetch: refetchUser } = useReadContracts({
