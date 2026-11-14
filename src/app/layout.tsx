@@ -49,15 +49,15 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  metadataBase: new URL("https://evm.karma.stability.nexus"),
+  metadataBase: new URL("https://karma.stability.nexus"),
   openGraph: {
     title: "Karma Protocol | Decentralized Oracle for Prediction Markets",
     description: "Submit price observations to Karma — the permissionless on-chain oracle for prediction pools. Your influence is weighted by your bull/bear neutrality.",
-    url: "https://evm.karma.stability.nexus",
+    url: "https://karma.stability.nexus",
     siteName: "Karma Protocol",
     images: [
       {
-        url: "https://evm.karma.stability.nexus/og-image.png",
+        url: "https://karma.stability.nexus/og-image.png",
         width: 1200,
         height: 630,
         alt: "Karma Protocol - Decentralized Oracle for Prediction Markets",
@@ -70,7 +70,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Karma Protocol | Decentralized Oracle for Prediction Markets",
     description: "Submit price observations to Karma — the permissionless on-chain oracle for prediction pools.",
-    images: ["https://evm.karma.stability.nexus/og-image.png"],
+    images: ["https://karma.stability.nexus/og-image.png"],
     creator: "@StabilityNexus",
   },
   robots: {
@@ -121,7 +121,7 @@ export default function RootLayout({
               "@type": "WebApplication",
               "name": "Karma Protocol",
               "description": "Permissionless on-chain oracle for prediction pools. Submit price observations weighted by bull/bear neutrality for decentralized consensus pricing.",
-              "url": "https://evm.karma.stability.nexus",
+              "url": "https://karma.stability.nexus",
               "applicationCategory": "FinanceApplication",
               "operatingSystem": "Web Browser",
               "offers": {
@@ -143,7 +143,7 @@ export default function RootLayout({
                 "Time-decayed price averaging",
                 "Community-driven price discovery"
               ],
-              "screenshot": "https://evm.karma.stability.nexus/og-image.png",
+              "screenshot": "https://karma.stability.nexus/og-image.png",
               "softwareVersion": "1.0.0",
               "datePublished": "2026-10-01",
               "dateModified": new Date().toISOString().split('T')[0]
