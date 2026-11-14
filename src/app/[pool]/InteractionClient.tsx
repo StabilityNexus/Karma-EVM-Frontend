@@ -1824,7 +1824,7 @@ export default function InteractionClient() {
 
                   <div className="flex items-center gap-2">
                     <Link
-                      href={`/submitPrice?id=${poolData.oracle_address || poolId}`}
+                      href={poolData.oracle_address ? `/submitPrice?id=${poolData.oracle_address}` : `/submitPrice?pool=${poolId}`}
                       className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs md:text-sm font-bold shadow-md shadow-amber-600/20 transition-all hover:scale-105 active:scale-95"
                     >
                       <Send className="w-3.5 h-3.5" />

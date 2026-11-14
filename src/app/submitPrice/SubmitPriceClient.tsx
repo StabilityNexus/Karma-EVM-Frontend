@@ -95,7 +95,8 @@ interface PriceEvent {
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function SubmitPriceClient() {
   const searchParams = useSearchParams();
-  const initialParam = searchParams.get('id') ?? searchParams.get('oracle') ?? searchParams.get('pool') ?? '';
+  const poolParam = searchParams.get('pool')?.trim() ?? '';
+  const oracleParam = (searchParams.get('id') ?? searchParams.get('oracle'))?.trim() ?? '';
 
   const { address: userAddress, isConnected, chain } = useAccount();
   const publicClient = usePublicClient();
@@ -115,12 +116,30 @@ export default function SubmitPriceClient() {
   const { isLoading: isDeployConfirming, isSuccess: isDeploySuccess } = useWaitForTransactionReceipt({ hash: deployTxHash });
 
   // Local state
-  const [lookupMode, setLookupMode] = useState<'oracle' | 'pool'>('oracle');
-  const [oracleAddressInput, setOracleAddressInput] = useState(initialParam);
-  const [poolAddressInput, setPoolAddressInput] = useState('');
+  const initialMode: 'oracle' | 'pool' = poolParam ? 'pool' : 'oracle';
+  const [lookupMode, setLookupMode] = useState<'oracle' | 'pool'>(initialMode);
+  const [oracleAddressInput, setOracleAddressInput] = useState(oracleParam);
+  const [poolAddressInput, setPoolAddressInput] = useState(poolParam);
   const [activeKarmaAddress, setActiveKarmaAddress] = useState<Address | undefined>(
-    isAddress(initialParam.trim()) ? (initialParam.trim() as Address) : undefined
+    !poolParam && isAddress(oracleParam) ? (oracleParam as Address) : undefined
   );
+
+  // Sync state if search params change via navigation
+  useEffect(() => {
+    const currentPool = searchParams.get('pool')?.trim();
+    const currentOracle = (searchParams.get('id') ?? searchParams.get('oracle'))?.trim();
+
+    if (currentPool) {
+      setLookupMode('pool');
+      setPoolAddressInput(currentPool);
+    } else if (currentOracle) {
+      setLookupMode('oracle');
+      setOracleAddressInput(currentOracle);
+      if (isAddress(currentOracle)) {
+        setActiveKarmaAddress(currentOracle as Address);
+      }
+    }
+  }, [searchParams]);
 
   const [priceInput, setPriceInput] = useState('');
   const [walletModalOpen, setWalletModalOpen] = useState(false);
@@ -504,7 +523,14 @@ export default function SubmitPriceClient() {
             </div>
             <div className="flex bg-stone-100 dark:bg-[#1a1d28] p-1 rounded-xl text-xs font-medium">
               <button
-                onClick={() => setLookupMode('oracle')}
+                onClick={() => {
+                  setLookupMode('oracle');
+                  if (isAddress(oracleAddressInput.trim())) {
+                    setActiveKarmaAddress(oracleAddressInput.trim() as Address);
+                  } else {
+                    setActiveKarmaAddress(undefined);
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg transition-all ${
                   lookupMode === 'oracle'
                     ? 'bg-amber-600 dark:bg-amber-500 text-white dark:text-stone-950 shadow-xs font-bold'
@@ -514,7 +540,16 @@ export default function SubmitPriceClient() {
                 Oracle Address
               </button>
               <button
-                onClick={() => setLookupMode('pool')}
+                onClick={() => {
+                  setLookupMode('pool');
+                  if (poolOracleAddress && poolOracleAddress !== '0x0000000000000000000000000000000000000000') {
+                    setActiveKarmaAddress(poolOracleAddress);
+                  } else if (discoveredKarmaFromFactory && discoveredKarmaFromFactory !== '0x0000000000000000000000000000000000000000') {
+                    setActiveKarmaAddress(discoveredKarmaFromFactory);
+                  } else {
+                    setActiveKarmaAddress(undefined);
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg transition-all ${
                   lookupMode === 'pool'
                     ? 'bg-amber-600 dark:bg-amber-500 text-white dark:text-stone-950 shadow-xs font-bold'
