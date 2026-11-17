@@ -578,6 +578,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
     try {
       validatedInput = validateTransactionInput({
         amount: buyAmount,
+        decimals: baseDecimals,
         poolId: poolData?.asset_address as Address,
         chainId: poolData?.chainId || 11155111, // Use pool chain or fallback to Sepolia
         userAddress: address

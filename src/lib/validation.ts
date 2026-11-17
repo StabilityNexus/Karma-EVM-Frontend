@@ -235,6 +235,7 @@ export const validateFee = (fee: string | number, maxFee: number = 100): number 
 // Combined validation for transaction inputs
 export const validateTransactionInput = (input: {
   amount: string;
+  decimals: number;
   poolId: string;
   chainId: number;
   userAddress: string;
@@ -248,7 +249,7 @@ export const validateTransactionInput = (input: {
   checkRateLimit(`tx_${input.userAddress}`, 5, 60000); // 5 transactions per minute
   
   return {
-    amount: validateAmount(input.amount),
+    amount: validateAmount(input.amount, input.decimals),
     poolId: validatePoolId(input.poolId),
     chainId: validateChainId(input.chainId),
     userAddress: validateAddress(input.userAddress)
