@@ -2,7 +2,7 @@ User-agent: *
 Allow: /
 
 # Sitemap
-Sitemap: https://evm.fate.stability.nexus/sitemap.xml
+Sitemap: https://karma.stability.nexus/sitemap.xml
 
 # Crawl-delay for respectful crawling
 Crawl-delay: 1

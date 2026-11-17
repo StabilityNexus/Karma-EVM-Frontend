@@ -17,7 +17,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "https://evm.karma.stability.nexus/og-image.png",
+        url: "https://karma.stability.nexus/og-image.png",
         width: 1200,
         height: 630,
         alt: "Karma Protocol - Submit Price",
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     title: "Submit Price | Karma Protocol",
     description:
       "Submit price observations to the Karma oracle weighted by your bull/bear neutrality.",
-    images: ["https://evm.karma.stability.nexus/og-image.png"],
+    images: ["https://karma.stability.nexus/og-image.png"],
   },
 };
 

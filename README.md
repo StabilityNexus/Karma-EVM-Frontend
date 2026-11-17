@@ -12,7 +12,7 @@
 <!-- Organization Name -->
 <div align="center">
 
-[![Static Badge](https://img.shields.io/badge/Stability_Nexus-KarmaProtocol-d97706?style=for-the-badge&labelColor=1c1917)](https://evm.karma.stability.nexus/)
+[![Static Badge](https://img.shields.io/badge/Stability_Nexus-KarmaProtocol-d97706?style=for-the-badge&labelColor=1c1917)](https://karma.stability.nexus/)
 
 </div>
 
@@ -49,7 +49,7 @@
 <h1>Karma Protocol</h1>
 </div>
 
-[Karma Protocol](https://evm.karma.stability.nexus/) is a permissionless on-chain oracle and perpetual prediction market platform. It weights submitted price observations by participants' opposing Bull and Bear exposure.
+[Karma Protocol](https://karma.stability.nexus/) is a permissionless on-chain oracle and perpetual prediction market platform. It weights submitted price observations by participants' opposing Bull and Bear exposure.
 
 Built with cutting-edge Web3 technologies, Karma Protocol delivers high-performance trading experiences with gas-optimized smart contracts and real-time community price discovery.
 

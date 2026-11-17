@@ -5,7 +5,7 @@ export const dynamic = 'force-static'
 export const revalidate = false
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://evm.karma.stability.nexus'
+  const baseUrl = 'https://karma.stability.nexus'
   const currentDate = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
   
   return [
