@@ -109,6 +109,24 @@ const isExportFormat = (value: unknown): value is ExportFormat => {
   );
 };
 
+const restoreObjectPrototypes = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map((item) => restoreObjectPrototypes(item)) as T;
+  }
+
+  if (value === null || typeof value !== "object") return value;
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== null && prototype !== Object.prototype) return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+      key,
+      restoreObjectPrototypes(item),
+    ])
+  ) as T;
+};
+
 // All of this runs before the first write, so a bad file is rejected outright rather than merged
 // halfway into a state nobody can reason about.
 export const readBackupFile = async (file: File): Promise<BackupSummary> => {
@@ -125,41 +143,43 @@ export const readBackupFile = async (file: File): Promise<BackupSummary> => {
     throw new Error("That file is not a Karma backup.");
   }
 
-  if (parsed.databaseName !== DATABASE_CONFIG.name) {
+  const backup = restoreObjectPrototypes(parsed);
+
+  if (backup.databaseName !== DATABASE_CONFIG.name) {
     throw new Error(
-      `This backup is for a different database (${parsed.databaseName}), not ${DATABASE_CONFIG.name}.`
+      `This backup is for a different database (${backup.databaseName}), not ${DATABASE_CONFIG.name}.`
     );
   }
 
-  if (typeof parsed.backupVersion !== "number" || parsed.backupVersion > BACKUP_VERSION) {
+  if (typeof backup.backupVersion !== "number" || backup.backupVersion > BACKUP_VERSION) {
     throw new Error(
-      `This backup uses format version ${parsed.backupVersion}, newer than this app supports (${BACKUP_VERSION}).`
+      `This backup uses format version ${backup.backupVersion}, newer than this app supports (${BACKUP_VERSION}).`
     );
   }
 
   // Older schemas merge fine. A newer one may carry stores and fields this build cannot interpret.
-  if (parsed.databaseVersion > DATABASE_CONFIG.version) {
+  if (backup.databaseVersion > DATABASE_CONFIG.version) {
     throw new Error(
-      `This backup came from a newer version of Karma (database v${parsed.databaseVersion}, this app is v${DATABASE_CONFIG.version}). Update the app before restoring it.`
+      `This backup came from a newer version of Karma (database v${backup.databaseVersion}, this app is v${DATABASE_CONFIG.version}). Update the app before restoring it.`
     );
   }
 
-  const present = BACKUP_STORE_NAMES.filter((name) => name in parsed.stores);
+  const present = BACKUP_STORE_NAMES.filter((name) => name in backup.stores);
   if (present.length === 0) {
     throw new Error("This backup contains no portfolio data to restore.");
   }
 
   const rowsByStore = Object.fromEntries(
-    BACKUP_STORE_NAMES.map((name) => [name, parsed.stores[name]?.length ?? 0])
+    BACKUP_STORE_NAMES.map((name) => [name, backup.stores[name]?.length ?? 0])
   );
 
   return {
-    backup: parsed,
-    exportedAt: parsed.exportedAt,
-    databaseVersion: parsed.databaseVersion,
+    backup,
+    exportedAt: backup.exportedAt,
+    databaseVersion: backup.databaseVersion,
     rowsByStore,
-    totalRows: countBackupRows(parsed),
-    wallets: backupWalletAddresses(parsed),
+    totalRows: countBackupRows(backup),
+    wallets: backupWalletAddresses(backup),
   };
 };
 
