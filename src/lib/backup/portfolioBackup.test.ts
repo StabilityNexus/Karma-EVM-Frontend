@@ -15,6 +15,7 @@ import {
   backupWalletAddresses,
   countBackupRows,
   keepOnlyBackupStores,
+  normalizeRestoredRecords,
   readBackupFile,
   walletMismatch,
   type BackupSummary,
@@ -185,6 +186,7 @@ describe("readBackupFile", () => {
     expect(summary.wallets).toEqual([WALLET]);
   });
 
+
   it("rejects a file that is not JSON", async () => {
     await expect(readBackupFile(asFile("{not json"))).rejects.toThrow(/not valid JSON/i);
   });
@@ -253,5 +255,57 @@ describe("readBackupFile envelope validation", () => {
 
   it("still accepts a well-formed envelope", async () => {
     await expect(readBackupFile(asFile(makeBackup()))).resolves.toBeTruthy();
+  });
+});
+
+
+describe("normalizeRestoredRecords", () => {
+  it("restores Object.prototype on records as they are written by the backup library", async () => {
+    const restored = Object.assign(Object.create(null), { userAddress: WALLET });
+    const updates: unknown[] = [];
+    const cursor = {
+      value: restored,
+      update: (value: unknown) => updates.push(value),
+      continue: vi.fn(),
+    };
+    const cursorRequest: { onsuccess?: () => void } & { result?: unknown } = {
+      result: cursor,
+    };
+    const transaction = {
+      objectStore: () => ({
+        openCursor: () => {
+          queueMicrotask(() => cursorRequest.onsuccess?.());
+          return cursorRequest;
+        },
+      }),
+      oncomplete: null as null | (() => void),
+      onerror: null,
+      onabort: null,
+    };
+    const db = {
+      objectStoreNames: { contains: (name: string) => name === "portfolioPositions" },
+      transaction: () => {
+        queueMicrotask(() => transaction.oncomplete?.());
+        return transaction;
+      },
+      close: vi.fn(),
+    };
+    vi.stubGlobal("indexedDB", {
+      open: () => {
+        const request: { onsuccess?: () => void; result?: unknown } = { result: db };
+        queueMicrotask(() => request.onsuccess?.());
+        return request;
+      },
+    });
+
+    try {
+      await normalizeRestoredRecords(makeBackup());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(updates).toHaveLength(1);
+    expect(Object.getPrototypeOf(updates[0])).toBe(Object.prototype);
+    expect((updates[0] as Record<string, unknown>).hasOwnProperty).toBeTypeOf("function");
   });
 });
