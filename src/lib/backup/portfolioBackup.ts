@@ -127,6 +127,50 @@ const restoreObjectPrototypes = <T>(value: T): T => {
   ) as T;
 };
 
+/** The backup library deserialises records with Object.create(null); repair them at the store boundary. */
+export const normalizeRestoredRecords = async (backup: ExportFormat): Promise<void> => {
+  if (typeof indexedDB === "undefined") return;
+
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DATABASE_CONFIG.name);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("Could not open the database"));
+  });
+
+  try {
+    const storeNames = Object.keys(backup.stores).filter((name) => db.objectStoreNames.contains(name));
+    if (storeNames.length === 0) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(storeNames, "readwrite");
+      let failure: unknown;
+
+      for (const name of storeNames) {
+        const request = transaction.objectStore(name).openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return;
+          cursor.update(restoreObjectPrototypes(cursor.value));
+          cursor.continue();
+        };
+      }
+
+      transaction.onerror = () => {
+        failure = transaction.error ?? new Error("Could not normalize restored records");
+      };
+      transaction.onabort = () => {
+        failure = failure ?? transaction.error ?? new Error("Could not normalize restored records");
+      };
+      transaction.oncomplete = () => {
+        if (failure) reject(failure);
+        else resolve();
+      };
+    });
+  } finally {
+    db.close();
+  }
+};
+
 // All of this runs before the first write, so a bad file is rejected outright rather than merged
 // halfway into a state nobody can reason about.
 export const readBackupFile = async (file: File): Promise<BackupSummary> => {
@@ -143,7 +187,7 @@ export const readBackupFile = async (file: File): Promise<BackupSummary> => {
     throw new Error("That file is not a Karma backup.");
   }
 
-  const backup = restoreObjectPrototypes(parsed);
+  const backup = parsed;
 
   if (backup.databaseName !== DATABASE_CONFIG.name) {
     throw new Error(
@@ -223,6 +267,7 @@ export const restorePortfolioBackup = async (
     backupData: keepOnlyBackupStores(summary.backup),
     strategy: "merge",
   });
+  await normalizeRestoredRecords(summary.backup);
 
   logger.debug("restorePortfolioBackup: merged backup", {
     rows: summary.totalRows,

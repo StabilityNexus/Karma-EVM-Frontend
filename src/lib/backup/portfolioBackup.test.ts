@@ -3,25 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 // The helpers under test are pure. Only readBackupFile reaches for the browser, via the
 // library's assertBrowser and its FileReader wrapper, so those two are stubbed rather than
 // pulling in a whole DOM. Real File objects and real JSON parsing are kept.
-vi.mock("@aossie-org/idb-backup", async (importOriginal) => {
-  const withNullPrototypes = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(withNullPrototypes);
-    if (value !== null && typeof value === "object") {
-      const result = Object.create(null) as Record<string, unknown>;
-      for (const key of Object.keys(value)) {
-        result[key] = withNullPrototypes((value as Record<string, unknown>)[key]);
-      }
-      return result;
-    }
-    return value;
-  };
-
-  return {
-    ...(await importOriginal<typeof import("@aossie-org/idb-backup")>()),
-    assertBrowser: () => {},
-    readFileAsJSON: async (file: File) => withNullPrototypes(JSON.parse(await file.text())),
-  };
-});
+vi.mock("@aossie-org/idb-backup", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@aossie-org/idb-backup")>()),
+  assertBrowser: () => {},
+  readFileAsJSON: async (file: File) => JSON.parse(await file.text()),
+}));
 import { BACKUP_VERSION, type ExportFormat } from "@aossie-org/idb-backup";
 import { DATABASE_CONFIG } from "@/lib/indexeddb/config";
 import {
@@ -29,6 +15,7 @@ import {
   backupWalletAddresses,
   countBackupRows,
   keepOnlyBackupStores,
+  normalizeRestoredRecords,
   readBackupFile,
   walletMismatch,
   type BackupSummary,
@@ -199,16 +186,6 @@ describe("readBackupFile", () => {
     expect(summary.wallets).toEqual([WALLET]);
   });
 
-  it("restores Object.prototype methods on deserialized records", async () => {
-    const summary = await readBackupFile(asFile(makeBackup()));
-    const record = summary.backup.stores.portfolioPositions?.[0]?.value as
-      | Record<string, unknown>
-      | undefined;
-
-    expect(record).toBeDefined();
-    expect(Object.getPrototypeOf(record)).toBe(Object.prototype);
-    expect(record?.hasOwnProperty).toBeTypeOf("function");
-  });
 
   it("rejects a file that is not JSON", async () => {
     await expect(readBackupFile(asFile("{not json"))).rejects.toThrow(/not valid JSON/i);
@@ -278,5 +255,57 @@ describe("readBackupFile envelope validation", () => {
 
   it("still accepts a well-formed envelope", async () => {
     await expect(readBackupFile(asFile(makeBackup()))).resolves.toBeTruthy();
+  });
+});
+
+
+describe("normalizeRestoredRecords", () => {
+  it("restores Object.prototype on records as they are written by the backup library", async () => {
+    const restored = Object.assign(Object.create(null), { userAddress: WALLET });
+    const updates: unknown[] = [];
+    const cursor = {
+      value: restored,
+      update: (value: unknown) => updates.push(value),
+      continue: vi.fn(),
+    };
+    const cursorRequest: { onsuccess?: () => void } & { result?: unknown } = {
+      result: cursor,
+    };
+    const transaction = {
+      objectStore: () => ({
+        openCursor: () => {
+          queueMicrotask(() => cursorRequest.onsuccess?.());
+          return cursorRequest;
+        },
+      }),
+      oncomplete: null as null | (() => void),
+      onerror: null,
+      onabort: null,
+    };
+    const db = {
+      objectStoreNames: { contains: (name: string) => name === "portfolioPositions" },
+      transaction: () => {
+        queueMicrotask(() => transaction.oncomplete?.());
+        return transaction;
+      },
+      close: vi.fn(),
+    };
+    vi.stubGlobal("indexedDB", {
+      open: () => {
+        const request: { onsuccess?: () => void; result?: unknown } = { result: db };
+        queueMicrotask(() => request.onsuccess?.());
+        return request;
+      },
+    });
+
+    try {
+      await normalizeRestoredRecords(makeBackup());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(updates).toHaveLength(1);
+    expect(Object.getPrototypeOf(updates[0])).toBe(Object.prototype);
+    expect((updates[0] as Record<string, unknown>).hasOwnProperty).toBeTypeOf("function");
   });
 });
