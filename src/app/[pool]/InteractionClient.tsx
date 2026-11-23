@@ -4,13 +4,16 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { RefreshCw, Wrench, TrendingUp, TrendingDown, ArrowUpRight, Scale, Send } from 'lucide-react';
 import {
   useAccount,
+  useChainId,
   useWalletClient,
+  useReadContract,
   useReadContracts,
   useWriteContract,
   useWaitForTransactionReceipt
 } from 'wagmi';
 import { formatUnits, parseUnits, type Address, createPublicClient, isAddress, BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError } from 'viem';
 import { PredictionPoolABI } from '@/utils/abi/PredictionPool';
+import { PredictionPoolFactoryABI } from '@/utils/abi/PredictionPoolFactory';
 import { CoinABI } from '@/utils/abi/Coin';
 import { ERC20ABI } from '@/utils/abi/ERC20';
 import { IOracleABI } from '@/utils/abi/IOracle';
@@ -37,14 +40,15 @@ import { useTheme } from "next-themes";
 import { Info } from 'lucide-react';
 import { logger } from "@/lib/logger";
 import { getChainConfig } from "@/utils/chainConfig";
+import { KarmaPoolFactories } from "@/utils/addresses";
+import { checkPool } from "@/utils/poolRegistry";
 import { getScanTransport, getScanChunkSize } from "@/utils/rpcTransport";
 import { scanLogsChunked, getAbiEvent } from "@/lib/scanLogs";
 
 
 
 // EVM-based pool hook
-const usePool = (poolId: Address | undefined, isConnected: boolean) => {
-  const { chain } = useAccount();
+const usePool = (poolId: Address | undefined, chainId: number, isConnected: boolean) => {
   const { address } = useAccount();
 
   const [pool, setPool] = useState<{
@@ -251,7 +255,7 @@ const usePool = (poolId: Address | undefined, isConnected: boolean) => {
         bear_percentage: bearPercentage,
         base_decimals: baseDecimals,
         base_symbol: baseSymbol,
-        chainId: chain?.id || 11155111,
+        chainId,
       };
 
       setPool(newPool);
@@ -260,7 +264,7 @@ const usePool = (poolId: Address | undefined, isConnected: boolean) => {
       setError((e as Error).message || "Failed to load pool data");
       setLoading(false);
     }
-  }, [poolId, poolReadError, poolNotFound, tokenQueryError, tokenData, userBalancesData, isConnected, poolName, baseToken, bullAddr, bearAddr, vaultCreator, chain, poolFeeData, oracle]);
+  }, [poolId, poolReadError, poolNotFound, tokenQueryError, tokenData, userBalancesData, isConnected, poolName, baseToken, bullAddr, bearAddr, vaultCreator, chainId, poolFeeData, oracle]);
 
   const userBalances = {
     bull_tokens: userBalancesData?.[0]?.result as bigint || BigInt(0),
@@ -526,6 +530,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
         abi: CoinABI,
         functionName: 'buy',
         args: [address!, amountWei],
+        chainId: poolData.chainId,
       });
 
       // Tx submitted — update the same toast to show on-chain wait
@@ -558,7 +563,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
       }
       pendingTransactionToastIdRef.current = null;
     }
-  }, [tokenAddress, address, writeContractAsync, baseDecimals]);
+  }, [tokenAddress, address, writeContractAsync, baseDecimals, poolData.chainId]);
 
   const handleBuy = withErrorHandling(async () => {
     if (!address || !connected) {
@@ -610,6 +615,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
           abi: ERC20ABI,
           functionName: 'approve',
           args: [tokenAddress, amountWei],
+          chainId: poolData.chainId,
         });
       } catch (err: unknown) {
         setPendingApproval(null);
@@ -665,6 +671,7 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
         abi: CoinABI,
         functionName: 'sell',
         args: [amountWei],
+        chainId: poolData.chainId,
       });
 
       // Tx submitted — update the same toast to show on-chain wait
@@ -1046,16 +1053,66 @@ function VaultSection({ isBull, poolData, userTokens, price, value, symbol, conn
 //   return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
 // };
 
+// The page opens only pools the Karma factory created. Any contract can answer the pool reads,
+// so without this check a link to a look-alike contract would show as a normal pool and take trades.
 export default function InteractionClient() {
+  const poolIdParam = useSearchParams().get("id");
+  // The chain the page reads from. The key remounts the page when it changes, so the check runs again.
+  const chainId = useChainId();
+  if (!poolIdParam || !isAddress(poolIdParam)) return <PoolLoadError message="This link does not include a valid pool address." />;
+  const factory = KarmaPoolFactories[chainId];
+  if (!factory) return <PoolLoadError message={`Karma has no pool factory on ${getChainConfig(chainId)?.name ?? "this network"}.`} />;
+  return <VerifiedPool key={`${chainId}:${poolIdParam}`} poolId={poolIdParam} chainId={chainId} factory={factory} />;
+}
+
+function VerifiedPool({ poolId, chainId, factory }: { poolId: Address; chainId: number; factory: Address }) {
+  const { data: factoryPools, isError, fetchStatus, refetch } = useReadContract({
+    address: factory,
+    abi: PredictionPoolFactoryABI,
+    functionName: 'getAllPools',
+    chainId,
+    query: { staleTime: 0 },
+  });
+  const status = checkPool(poolId, factoryPools as readonly Address[] | undefined, { isError, isFetching: fetchStatus !== "idle" });
+  if (status === "checking") return <PoolLoading />;
+  if (status === "error") return <PoolLoadError message="Could not check this pool with the Karma factory. Check your connection and try again." retry={() => void refetch()} />;
+  if (status === "unregistered") return <PoolLoadError message={`No Karma pool exists at this address on ${getChainConfig(chainId)?.name ?? "this network"}.`} />;
+  return <PoolPageContent poolId={poolId} poolChainId={chainId} />;
+}
+
+function PoolLoading() {
+  return (
+    <div className="flex items-center justify-center h-screen bg-transparent">
+      <Loading size="xl" />
+    </div>
+  );
+}
+
+function PoolLoadError({ message, retry }: { message: string; retry?: () => void }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-transparent">
+      <div className="text-center">
+        <h2 className="text-lg md:text-xl font-semibold mb-2 text-stone-900 dark:text-stone-100">
+          Error Loading Pool
+        </h2>
+        <p className="text-stone-600 dark:text-stone-400">{message}</p>
+        <div className="mt-6 flex justify-center gap-3">
+          {retry && <Button onClick={retry}>Try again</Button>}
+          <Button asChild variant="outline" className="border-stone-300 dark:border-stone-700 hover:border-amber-500">
+            <Link href="/explorePools">Browse pools</Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PoolPageContent({ poolId, poolChainId }: { poolId: Address; poolChainId: number }) {
   // const stickyRef = useRef<HTMLElement | null>(null);
   const { theme } = useTheme();
-  const params = useSearchParams();
   const { address, isConnected, chain } = useAccount(); // eslint-disable-line @typescript-eslint/no-unused-vars
-  // Validate poolId from query params - don't default to zero address
-  const poolIdParam = params.get("id");
-  const poolId = poolIdParam && isAddress(poolIdParam) ? (poolIdParam as Address) : undefined;
 
-  const { pool, userBalances, loading, error, refetch } = usePool(poolId, isConnected);
+  const { pool, userBalances, loading, error, refetch } = usePool(poolId, poolChainId, isConnected);
   const { data: walletClient } = useWalletClient();
 
   // Read oracle prices from prediction pool contract
@@ -1447,6 +1504,7 @@ export default function InteractionClient() {
         address: poolId,
         abi: PredictionPoolABI,
         functionName: 'rebalance',
+        chainId: poolChainId,
       });
       toast.dismiss(loadingToast);
       // Loading state cleared in confirmation useEffect once tx is confirmed
@@ -1675,28 +1733,9 @@ export default function InteractionClient() {
     };
   }, []);
 
-  if (loading && !pool)
-    return (
-      <div className="flex items-center justify-center h-screen bg-transparent">
-        <Loading size="xl" />
-      </div>
-    );
+  if (loading && !pool) return <PoolLoading />;
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <div className="text-center">
-          <h2 className="text-lg md:text-xl font-semibold mb-2 text-stone-900 dark:text-stone-100">
-            Error Loading Pool
-          </h2>
-          <p className="text-stone-600 dark:text-stone-400">{error}</p>
-          <Button asChild variant="outline" className="mt-6 border-stone-300 dark:border-stone-700 hover:border-amber-500">
-            <Link href="/explorePools">Browse pools</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  if (error) return <PoolLoadError message={error} />;
 
   return (
     <div className="min-h-screen bg-transparent text-stone-900 dark:text-stone-100">
